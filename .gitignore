@@ -1,0 +1,16 @@
+# OpenClaw config
+.openclaw/
+openclaw.json
+
+# Logs
+logs/
+*.log
+
+# Credentials (không commit)
+credentials.json
+*.token
+.env
+
+# Thư mục tạm
+tmp/
+temp/
