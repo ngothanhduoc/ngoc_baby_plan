@@ -11,6 +11,9 @@ credentials.json
 *.token
 .env
 
+# Workspace (task tracking)
+workspace/
+
 # Thư mục tạm
 tmp/
 temp/
