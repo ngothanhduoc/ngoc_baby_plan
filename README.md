@@ -11,6 +11,7 @@ ngoc_baby_plan/
 ├── analysis/              # Phân tích đối thủ cạnh tranh
 ├── marketing/             # Content calendar & plan
 ├── scripts/              # Scripts automation
+├── workspace/            # Task tracking (không commit)
 └── README.md
 ```
 
@@ -45,7 +46,7 @@ Phân tích 6 shop lớn mẹ & bé Việt Nam:
 | Tuần | Mục tiêu | Bài viết |
 |------|----------|----------|
 | Tuần 1 (19-25/3) | Building Trust | 5 bài |
-| Tuần 2 (26/3-1/4) | Engagement | 7 bài |
+| Tuần 2 (26/3 - 1/4) | Engagement | 7 bài |
 | Tuần 3 (2-8/4) | Conversion | 7 bài |
 | Tuần 4 (9-15/4) | Retention | 7 bài |
 
@@ -95,7 +96,27 @@ Chi tiết các loại promo:
 
 ## 🤖 SCRIPTS AUTOMATION
 
-### Daily Tech Summary Script
+### 1. Task Reminder Script
+
+**File:** `scripts/task_reminder.py`
+
+Nhắc người dùng gửi title task vào 7:00 sáng và 12:00 trưa (VN time).
+
+**Cách dùng:**
+```bash
+python3 scripts/task_reminder.py morning   # Nhắc sáng 7:00
+python3 scripts/task_reminder.py afternoon # Nhắc trưa 12:00
+```
+
+**Cron job:**
+```bash
+0 0 * * * python3 /root/.openclaw/workspace/scripts/task_reminder.py morning >> /root/.openclaw/workspace/logs/task_reminder.log 2>&1
+0 5 * * * python3 /root/.openclaw/workspace/scripts/task_reminder.py afternoon >> /root/.openclaw/workspace/logs/task_reminder.log 2>&1
+```
+
+---
+
+### 2. Daily Tech Summary Script
 
 **File:** `scripts/daily_tech_summary.py`
 
@@ -108,25 +129,52 @@ Script gửi tin tóm tắt công nghệ mỗi sáng 9h UTC+7:
 
 ---
 
-## 🚀 CÁCH SỬ DỤNG
+### 3. Toggl Automation Script
 
-### Post bài Facebook
+**File:** `scripts/toggl_automation.py`
 
-1. Mở `marketing/5_bat_dau_facebook_posts.md`
-2. Copy caption
-3. Upload ảnh/video
-4. Post lên Facebook fanpage
+Tự động bấm timer Toggl theo lịch trình:
+- Sáng: 7:00-11:15 hoặc 11:20 VN (4h15p-4h20p)
+- Chiều: Random start 12:00-12:15 VN, stop khi tổng = 7h59p50s-7h59p55s
+- Tổng: 7h59p50s-7h59p55s (gần đúng 8h, không vượt)
 
-### Theo dõi KPI
+**Cách dùng:**
+```bash
+python3 scripts/toggl_automation.py start-morning    # Start sáng
+python3 scripts/toggl_automation.py stop-morning     # Stop sáng
+python3 scripts/toggl_automation.py check-morning     # Check sáng
+python3 scripts/toggl_automation.py start-afternoon  # Start chiều
+python3 scripts/toggl_automation.py check-total     # Check tổng & stop
+python3 scripts/toggl_automation.py test            # Test Toggl API
+```
 
-Mỗi tuần báo cáo:
-- Like, comment, share
-- Khách mới, khách quay lại
-- Đơn online, revenue
+**Cấu hình:**
+Thiết lập trong `.env`:
+```
+TOGGL_API_TOKEN=your_toggl_token_here
+TELEGRAM_CHAT_ID=320491154
+```
 
-### Optimize content
+---
 
-Dựa trên KPI tuần trước → Điều chỉnh tuần sau
+### 4. Auto-commit Script
+
+**File:** `scripts/auto_commit.sh`
+
+Tự động commit và push lên GitHub mỗi khi kết thúc một session.
+
+**Cách dùng:**
+```bash
+bash scripts/auto_commit.sh
+```
+
+**Cấu hình:**
+Thiết lập trong `.env`:
+```
+GITHUB_TOKEN=your_github_token_here
+```
+
+**Security:** Token được lưu trong `.env` (file bị .gitignore bỏ qua), không commit lên GitHub.
 
 ---
 
@@ -156,4 +204,4 @@ MIT License - Open source, chia sẻ tự do!
 
 **Created by:** KIKI 🐶 & NgocBaby Team
 **Date:** March 2026
-**Version:** 1.0
+**Version:** 2.0
