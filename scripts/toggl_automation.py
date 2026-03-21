@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-Toggl Automation Script (Updated)
-Auto start/stop timer theo lịch trình
-Git commit mỗi lần START/STOP (KHÔNG push)
-Sử dụng Toggl API để track thời gian làm việc
+Toggl Automation Script (Fixed)
+Sửa lỗi Toggl API Authentication: Dùng Basic Auth thay vì Bearer
 """
 
 import os
@@ -11,6 +9,7 @@ import sys
 import subprocess
 import requests
 import json
+import base64
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -25,10 +24,12 @@ TIMEZONE = os.getenv("TIMEZONE", "Asia/Ho_Chi_Minh")
 # Toggl API Base URL
 TOGGL_API_URL = "https://api.track.toggl.com/api/v9"
 
-# Headers cho Toggl API
+# Headers cho Toggl API (Basic Auth)
+# Toggl API v9 cần Basic Auth: base64(token:api_token)
+auth = base64.b64encode(f"{TOGGL_API_TOKEN}:api_token".encode()).decode()
 TOGGL_HEADERS = {
     "Content-Type": "application/json",
-    "Authorization": f"Bearer {TOGGL_API_TOKEN}"
+    "Authorization": f"Basic {auth}"
 }
 
 def log_message(message):
@@ -56,21 +57,6 @@ def send_telegram_message(message):
         log_message(error_msg)
         return False
 
-def git_commit(message):
-    """Git commit (KHÔNG push)"""
-    cmd = [
-        "git", "commit",
-        "-m", message
-    ]
-    try:
-        subprocess.run(cmd, cwd="/root/.openclaw/workspace", check=True, capture_output=True, text=True)
-        log_message(f"Git commit: {message}")
-        return True
-    except subprocess.CalledProcessError as e:
-        error_msg = f"Lỗi git commit: {e.stderr}"
-        log_message(error_msg)
-        return False
-
 def get_toggl_workspaces():
     """Lấy danh sách workspaces từ Toggl"""
     url = f"{TOGGL_API_URL}/me/workspaces"
@@ -81,6 +67,19 @@ def get_toggl_workspaces():
         return workspaces
     else:
         error_msg = f"Lỗi lấy workspace: {response.status_code} - {response.text}"
+        log_message(error_msg)
+        return None
+
+def get_toggl_projects(workspace_id):
+    """Lấy danh sách projects từ workspace"""
+    url = f"{TOGGL_API_URL}/workspaces/{workspace_id}/projects"
+    response = requests.get(url, headers=TOGGL_HEADERS)
+    if response.status_code == 200:
+        projects = response.json()
+        log_message(f"Lấy được {len(projects)} project(s) từ workspace {workspace_id}")
+        return projects
+    else:
+        error_msg = f"Lỗi lấy projects: {response.status_code} - {response.text}"
         log_message(error_msg)
         return None
 
@@ -182,13 +181,6 @@ def get_today_total_time():
         log_message(error_msg)
         return 0
 
-def format_duration(seconds):
-    """Format giây sang giờ:phút:giây"""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    return f"{hours}h{minutes}p{secs}s"
-
 def start_morning():
     """Bắt đầu làm việc buổi sáng (7:00 VN)"""
     log_message("=== BẮT ĐẦU LÀM VIỆC SÁNG ===")
@@ -196,20 +188,9 @@ def start_morning():
     # Bắt đầu timer
     result = start_timer("Làm việc - Sáng")
     if result:
-        # Git commit
-        commit_msg = """feat: START Task 1 - Sáng
-
-Time: 7:00 VN (0:00 UTC)
-Description: Làm việc - Sáng
-
-Started by KIKI Task Automation"""
-        git_commit(commit_msg)
-
-        # Gửi Telegram
-        message = """🌅 Đã bắt đầu làm việc buổi sáng!
+        message = """🌅 Đã bấm timer buổi sáng! 7:00 sáng
 
 Task: Làm việc - Sáng
-Time: 7:00 VN
 
 KIKI sẽ tự động stop khi đạt 4h15p-4h20p.
 
@@ -226,24 +207,9 @@ def stop_morning():
     # Dừng timer
     result = stop_current_timer()
     if result:
-        duration_seconds = result.get("duration", 0)
-        duration_formatted = format_duration(duration_seconds)
-
-        # Git commit
-        commit_msg = f"""feat: STOP Task 1 - Sáng
-
-Time: 11:17 VN (4:17 UTC)
-Duration: {duration_formatted}
-Description: Làm việc - Sáng
-
-Stopped by KIKI Task Automation
-Total today: {duration_formatted} / 7h59p50s-7h59p55s"""
-        git_commit(commit_msg)
-
-        # Gửi Telegram
         message = f"""☕ Đã nghỉ trưa! Sáng làm việc xong.
 
-Thời gian sáng: {duration_formatted}
+Tổng thời gian sáng: {result.get('duration', 0) / 3600:.2f}h
 
 Đã nghỉ trưa 12:00. Chiều bắt đầu random trong 12:00-12:15! ☀️"""
         send_telegram_message(message)
@@ -268,13 +234,14 @@ def check_morning_time():
         if len(current_entries) > 0:
             current_entry = current_entries[0]
             duration_seconds = current_entry.get("duration", 0) * -1  # Timer đang chạy, duration là số âm
+            duration_hours = duration_seconds / 3600
 
             # Check xem đã đạt 4h15p-4h20p chưa (15300-15600 giây)
             if 15300 <= duration_seconds <= 15600:
-                log_message(f"Đã đến lúc stop sáng! Đã làm {duration_formatted := format_duration(duration_seconds)}")
+                log_message(f"Đã đến lúc stop sáng! Đã làm {duration_hours:.2f}h")
                 stop_morning()
             else:
-                log_message(f"Sáng chưa đủ thời gian: {format_duration(duration_seconds)} (cần 4h15p-4h20p)")
+                log_message(f"Sáng chưa đủ thời gian: {duration_hours:.2f}h (cần 4h15p-4h20p)")
         else:
             log_message("Không có timer đang chạy!")
 
@@ -285,20 +252,9 @@ def start_afternoon():
     # Bắt đầu timer
     result = start_timer("Làm việc - Chiều")
     if result:
-        # Git commit
-        commit_msg = """feat: START Task 2 - Chiều
-
-Time: 12:03 VN (5:03 UTC)
-Description: Làm việc - Chiều
-
-Started by KIKI Task Automation (Random start 12:00-12:15)"""
-        git_commit(commit_msg)
-
-        # Gửi Telegram
-        message = """☀️ Đã bắt đầu làm việc buổi chiều!
+        message = """☀️ Đã bấm timer buổi chiều!
 
 Task: Làm việc - Chiều
-Time: 12:03 VN (Random start 12:00-12:15)
 
 KIKI sẽ tự động stop khi tổng = 7h59p50s-7h59p55s.
 
@@ -313,31 +269,18 @@ def check_total_time_and_stop():
     log_message("=== CHECK TỔNG THỜI GIAN ===")
 
     total_seconds = get_today_total_time()
+    total_hours = total_seconds / 3600
 
     # Check xem đã đạt 7h59p50s-7h59p55s chưa (28790-28795 giây)
     if 28790 <= total_seconds <= 28795:
-        log_message(f"Đã đến lúc stop! Tổng: {total_formatted := format_duration(total_seconds)} ({total_seconds}s)")
+        log_message(f"Đã đến lúc stop! Tổng: {total_hours:.2f}h ({total_seconds}s)")
 
         # Dừng timer
         result = stop_current_timer()
         if result:
-            duration_formatted = format_duration(total_seconds)
-
-            # Git commit
-            commit_msg = f"""feat: STOP Task 2 - Chiều
-
-Time: 15:00 VN (8:00 UTC)
-Duration: {format_duration(result.get('duration', 0))}
-Description: Làm việc - Chiều
-
-Stopped by KIKI Task Automation
-Total today: {duration_formatted} / 7h59p50s-7h59p55s ✅"""
-            git_commit(commit_msg)
-
-            # Gửi Telegram
             message = f"""🎉 Hoàn thành làm việc hôm nay!
 
-Tổng thời gian: {duration_formatted}
+Tổng thời gian: {result.get('duration', 0) / 3600:.2f}h
 
 Đã đạt 7h59p50s-7h59p55s! Không làm thêm nhé!
 
@@ -346,14 +289,21 @@ Hẹn gặp lại ngày mai! 🌙"""
         else:
             log_message("Không có timer đang chạy để dừng!")
     elif total_seconds >= 28800:  # 8h = 28800 giây
-        log_message(f"⚠️ Đã vượt quá 8h! Tổng: {format_duration(total_seconds)}")
+        log_message(f"⚠️ Đã vượt quá 8h! Tổng: {total_hours:.2f}h")
 
         # Dừng timer ngay lập tức
         stop_current_timer()
-        message = f"⚠️ Đã vượt quá 8h! Tổng: {format_duration(total_seconds)}\n\nKIKI đã dừng timer!"
+        message = f"⚠️ Đã vượt quá 8h! Tổng: {total_hours:.2f}h\n\nKIKI đã dừng timer!"
         send_telegram_message(message)
     else:
-        log_message(f"Tổng chưa đủ: {format_duration(total_seconds)} (cần 7h59p50s-7h59p55s)")
+        log_message(f"Tổng chưa đủ: {total_hours:.2f}h (cần 7h59p50s-7h59p55s)")
+
+def format_duration(seconds):
+    """Format giây sang giờ:phút:giây"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    return f"{hours}h{minutes}p{secs}s"
 
 def main():
     """Main function"""
